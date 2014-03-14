@@ -21,6 +21,7 @@ module Capistrano
 
       def ec2_role(name, options={})
         ec2_handler.get_servers_for_role(name).each do |server|
+          options[:instance_id] = server.id
           env.role(name, CapEC2::Utils.contact_point(server), options)
         end
       end
