@@ -6,8 +6,10 @@ module CapEC2
       load_config
       configured_regions = get_regions(fetch(:ec2_region))
       @ec2 = {}
+      @elb = {}
       configured_regions.each do |region|
         @ec2[region] = ec2_connect(region)
+        @elb[region] = elb_connect(region)
       end
     end
 
@@ -17,6 +19,15 @@ module CapEC2
         secret_access_key: fetch(:ec2_secret_access_key),
         region: region
       )
+    end
+
+    def elb_connect(region)
+      elb = AWS::ELB.new(
+        access_key_id: fetch(:ec2_access_key_id),
+        secret_access_key: fetch(:ec2_secret_access_key),
+        region: region 
+      )
+      elb.load_balancers
     end
 
     def status_table
@@ -70,5 +81,45 @@ module CapEC2
       servers.flatten
     end
 
+    def get_load_balancers_for_instance(instance_id)
+      load_balancers = [] 
+      @elb.each do |region, elb|
+        elb.each do |lb |
+          lb.instances.each do |instance|
+            if instance.id == instance_id
+              load_balancers << lb.name
+            end
+          end
+        end
+      end
+      load_balancers.flatten
+    end
+
+    def deregister_from_elb(instance_id)
+      removed = {}
+
+      @elb.each do |region, elb|
+        removed[region] = []
+        elb.each do |lb|
+          lb.instances.each do |instance|
+            if instance.id == instance_id
+              removed[region] << lb.name
+              lb.instances.deregister(instance_id)
+            end
+          end
+        end
+      end
+      removed
+    end 
+
+    def register_in_elb(instance_id, load_balancers)
+      @elb.each do |region, elbs|
+        if load_balancers.key?(region)
+          load_balancers[region].each do |lb|
+            elbs[lb].instances.register(instance_id)
+          end
+        end
+      end
+    end
   end
 end
